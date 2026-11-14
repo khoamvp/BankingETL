@@ -1,13 +1,13 @@
 import psycopg
 from google.cloud import bigquery
 from psycopg.rows import dict_row
-
+from pathlib import Path
 
 def connect_bigquery(config):
     bq = config["bigquery"]
     return bigquery.Client(project=bq["project_id"], location=bq["location"])
 
-8
+
 def connect_postgres(config):
     db = config["source_db"]
   
@@ -21,11 +21,11 @@ def connect_postgres(config):
         row_factory=dict_row    # dùng dict_row để postgres trả về data dạng json
     )
 
-# Lấy tên table 
-def table_id(config, dataset_name, table_name):
-    return f"{config['bigquery']['project_id']}.{dataset_name}.{table_name}"
 
-def create_dataset(client, config, dataset_name):
-    dataset=bigquery.Dataset(f"{config['bigquery']['project_id']}.{dataset_name}")
-    dataset.location=config['bigquery']['location']
-    client.create_dataset(dataset, exists_ok=True)
+
+def run_sql_file(client, file_path, **params):
+    with open(file_path, encoding="utf-8") as f:
+        sql = f.read()
+
+    sql = sql.format(**params)
+    client.query(sql).result()

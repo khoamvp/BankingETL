@@ -1,25 +1,30 @@
-"""Buoc khoi tao: tao dataset/table BigQuery can dung (raw + clean + ops)."""
-
-from etl.clients import connect_bigquery, create_dataset
-from etl.schema import create_raw_table
-from etl.settings import PROJECT_ROOT, load_config
-from etl.tables import SOURCE_TABLES
-
-def run():
-    config = load_config()
-    client = connect_bigquery(config)
-    bq = config["bigquery"]
-
-    print("Creating BigQuery datasets...")
-    create_dataset(client, config, bq["raw_dataset"])
-    
-    print("Creating raw tables...")
-    for table in SOURCE_TABLES:
-        create_raw_table(client, config, table)
-        print(f"  ready: raw.{table['name']}")
-
-    print("BigQuery initialization complete.")
+from google.cloud import bigquery
+from .schema import raw_schema
 
 
-if __name__ == "__main__":
-    run()
+def load_to_staging(client, config, table, dataframe):
+    # 1. Xác định bảng Staging
+    destination = f"{config["bigquery"]["project_id"]}.{"staging"}.{table["name"]}"
+    # 2. Xử lý bảng nguồn rỗng
+    if dataframe.empty:
+        client.query( f"TRUNCATE TABLE `{destination}`").result()
+        return 0
+    # 3. Lấy schema
+    schema = raw_schema(table)
+    # 4. Cấu hình Load Job
+    job_config = bigquery.LoadJobConfig(
+        schema=schema,
+        create_disposition=bigquery.CreateDisposition.CREATE_NEVER,
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
+    )
+    # 5. Load dữ liệu vào Staging
+    load_job = client.load_table_from_dataframe(
+        dataframe[[field.name for field in schema]],
+        destination,
+        job_config=job_config
+    )
+
+    # 6. Đợi load hoàn thành
+    load_job.result()
+
+    return len(dataframe)
